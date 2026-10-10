@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.coinmachine.ops</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/yourname/coin_machine/.venv/bin/python</string>
+        <string>/Users/yourname/coin_machine/src/main.py</string>
+        <string>--mode</string>
+        <string>ops-once</string>
+    </array>
+    <!-- 每 4 小时执行一次（14400 秒） -->
+    <key>StartInterval</key>
+    <integer>14400</integer>
+    <key>WorkingDirectory</key>
+    <string>/Users/yourname/coin_machine</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>/Users/yourname/coin_machine/src</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/yourname/coin_machine/logs/ops_launchd_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/yourname/coin_machine/logs/ops_launchd_stderr.log</string>
+</dict>
+</plist>

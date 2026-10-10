@@ -26,10 +26,12 @@ python src/main.py --mode once
 
 | 模式 | 命令 |
 | --- | --- |
-| 单次采集 | `python src/main.py --mode once` |
-| 进程内定时（APScheduler） | `python src/main.py --mode schedule` |
+| 单次库存采集（写 SQLite） | `python src/main.py --mode once` |
+| 库存采集定时（APScheduler） | `python src/main.py --mode schedule` |
+| 单次运维同步（订单+设备到期+货道低库存） | `PYTHONPATH=src python src/main.py --mode ops-once` |
+| 运维同步定时（默认每 4 小时） | `PYTHONPATH=src python src/main.py --mode ops-schedule` |
 
-生产环境更推荐 macOS **launchd** 定时调用 `--mode once`，示例 plist 见 [deploy/com.coinmachine.collector.plist.example](deploy/com.coinmachine.collector.plist.example)。
+生产环境更推荐 macOS **launchd**。库存采集示例：[deploy/com.coinmachine.collector.plist.example](deploy/com.coinmachine.collector.plist.example)；运维同步示例：[deploy/com.coinmachine.ops.plist.example](deploy/com.coinmachine.ops.plist.example)。
 
 ## 配置
 
@@ -37,6 +39,57 @@ python src/main.py --mode once
 - 敏感凭据：`.env` 中的 `COIN_MACHINE_USERNAME` / `COIN_MACHINE_PASSWORD`，或 macOS Keychain（见 settings 中 `credentials.keychain_service`）
 - 算术验证码：默认自动识别（macOS Vision；可选 `pip install -r requirements-captcha.txt` 提高成功率）
 - 调试：`COIN_MACHINE_CAPTCHA_CODE=8 python src/login_probe.py` 可手动指定一次验证码答案
+
+### 运维同步（`ops`）
+
+`config/settings.yaml` 中：
+
+```yaml
+ops:
+  facility_expiry_warn_days: 30   # 剩余天数 ≤ 此值则 highlight
+  low_stock_absolute: 10          # 现存 ≤ 此值告警；设为 null 关闭
+  low_stock_ratio: 0.2            # 现存/容量 ≤ 此比例告警；null 关闭（容量无效时跳过）
+  order_sync_overlap_minutes: 10
+  order_sync_page_size: 50
+  write_report_json: false        # true 时写入 logs/ops_sync_*.json
+
+schedule:
+  timezone: Asia/Shanghai
+  cron: null                      # 与 interval 二选一；cron 非 null 时优先 cron
+  interval_minutes: 240           # 4 小时
+```
+
+独立调用（定时任务也只调这一行）：
+
+```python
+from config import load_config
+from hfyuwo.ops.sync import run_scheduled_ops_sync
+
+report = run_scheduled_ops_sync(load_config())
+```
+
+#### 安装 4 小时定时（launchd，推荐）
+
+```bash
+# 1) 首次订单基线（一次性）
+PYTHONPATH=src python src/sync_goods_orders.py full --begin 2026-10-01 --end 2026-10-31 --save-state
+
+# 2) 手动验证一次运维同步
+PYTHONPATH=src python src/main.py --mode ops-once
+
+# 3) 安装 launchd（每 4 小时）
+cp deploy/com.coinmachine.ops.plist.example ~/Library/LaunchAgents/com.coinmachine.ops.plist
+# 编辑 plist 中的路径为你的本机绝对路径
+launchctl load ~/Library/LaunchAgents/com.coinmachine.ops.plist
+launchctl start com.coinmachine.ops
+```
+
+#### 或进程内 APScheduler
+
+```bash
+# settings.yaml 保持 schedule.interval_minutes: 240 且 cron: null
+PYTHONPATH=src python src/main.py --mode ops-schedule
+```
 
 ### 登录后可用的主要数据
 

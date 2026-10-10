@@ -31,7 +31,16 @@ credentials:
 storage:
   db_path: "data/coin_machine.db"
 
+ops:
+  facility_expiry_warn_days: 30
+  low_stock_absolute: 10
+  low_stock_ratio: 0.2
+  order_sync_overlap_minutes: 10
+  order_sync_page_size: 50
+  write_report_json: false
+
 schedule:
   timezone: "Asia/Shanghai"
-  cron: "0 3 * * *"
-  interval_minutes: null
+  # 运维同步用 interval；与 cron 二选一（cron 非 null 时优先 cron）
+  cron: null
+  interval_minutes: 240

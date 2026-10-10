@@ -43,6 +43,15 @@ class ScheduleConfig(BaseModel):
     interval_minutes: Optional[int] = None
 
 
+class OpsConfig(BaseModel):
+    facility_expiry_warn_days: int = 30
+    low_stock_absolute: Optional[int] = 10
+    low_stock_ratio: Optional[float] = 0.2
+    order_sync_overlap_minutes: int = 10
+    order_sync_page_size: int = 50
+    write_report_json: bool = False
+
+
 class AppConfig(BaseModel):
     run_mode: str = "once"
     interval_minutes: int = 60
@@ -54,6 +63,7 @@ class Settings(BaseSettings):
     credentials: Credentials
     storage: StorageConfig
     schedule: ScheduleConfig
+    ops: OpsConfig = Field(default_factory=OpsConfig)
 
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
