@@ -15,6 +15,8 @@ cp config/.env.example .env   # 填入真实账号密码
 python src/login_probe.py     # 验证登录并查看账号/设备摘要
 PYTHONPATH=src python src/list_facilities.py --all --compact   # 设备列表
 PYTHONPATH=src python src/list_track_share.py 3222 --compact   # 货道配货/库存
+PYTHONPATH=src python src/sync_goods_orders.py full --begin 2026-10-01 --end 2026-10-31 --save-state --compact
+PYTHONPATH=src python src/sync_goods_orders.py incremental --compact   # 定时增量
 python src/main.py --mode once
 ```
 
@@ -44,6 +46,8 @@ python src/main.py --mode once
 | `GET /getInfo` | 用户、角色、`permissions` 权限列表 |
 | `GET /vending/facility/list` | 纪念币机列表（`facilityId`、`facilityNumber`、库存/连接状态等） |
 | `GET /vending/track/share/{facilityId}` | 单台设备货道配货与库存（`data.list` + `data.facility`） |
+| `GET /vending/goods_order/list` | 订单明细分页（按 `params[beginCreateTime]` / `endCreateTime`） |
+| `GET /vending/goods_order/listAll` | 同区间金额/渠道汇总（**不是**订单全量列表） |
 
 ### 业务 API 封装（`src/hfyuwo/`）
 
@@ -53,6 +57,8 @@ python src/main.py --mode once
 from hfyuwo import create_context
 from hfyuwo.services.facility import list_facilities_page, list_all_facilities
 from hfyuwo.services.track import get_facility_track_share, list_track_share_items
+from hfyuwo.services.goods_order import sync_goods_orders_full, sync_goods_orders_incremental
+from hfyuwo.models.goods_order import GoodsOrderTimeRange
 from hfyuwo.services.user import get_user_info
 
 page = list_facilities_page(1, 50)   # -> RuoYiPage[Facility]

@@ -8,6 +8,7 @@ __pycache__/
 data/*.db
 data/*.db-*
 data/token_cache.json
+data/goods_order_sync_state.json
 
 logs/
 *.log
