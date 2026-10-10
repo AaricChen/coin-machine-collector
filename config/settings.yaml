@@ -1,0 +1,30 @@
+app:
+  run_mode: once
+  interval_minutes: 60
+
+api:
+  base_url: "https://admin.example.com"
+  login_path: "/api/login"
+  machine_list_path: "/api/machines"
+  track_stock_path: "/api/machine/{machine_id}/tracks"
+  login_method: "POST"
+  login_data_type: "json"
+  token_field: "data.token"
+  extra_headers:
+    User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+  request_timeout: 30
+
+credentials:
+  username: "your_username"
+  password: "your_password"
+  # 可选：从 macOS Keychain 读取（需先用 security 或 keyring 写入）
+  keychain_service: ""
+  keychain_username_key: ""
+
+storage:
+  db_path: "data/coin_machine.db"
+
+schedule:
+  timezone: "Asia/Shanghai"
+  cron: "0 3 * * *"
+  interval_minutes: null
