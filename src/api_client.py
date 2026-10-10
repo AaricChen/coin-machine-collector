@@ -6,8 +6,8 @@ from loguru import logger
 from config import Settings
 from hfyuwo.client import HfyuwoClient
 from hfyuwo.context import HfyuwoContext
-from hfyuwo.models.base import extract_rows
 from hfyuwo.services.facility import list_all_facilities, list_facilities_page
+from hfyuwo.services.track import list_track_share_items
 from hfyuwo.services.user import get_user_info as fetch_user_info
 from token_manager import TokenManager
 
@@ -61,9 +61,8 @@ class ApiClient:
         return rows
 
     def get_track_stock(self, machine_id: str) -> list[dict]:
-        path = self.settings.api.track_stock_path.format(machine_id=machine_id)
-        data = self._ctx.client.get_json(path.lstrip("/"))
-        track_list = extract_rows(data)
+        tracks = list_track_share_items(int(machine_id), ctx=self._ctx)
+        track_list = [t.model_dump(by_alias=True) for t in tracks]
         logger.debug(
             "机器 {} 轨道库存获取成功，共 {} 条",
             machine_id,
@@ -97,9 +96,14 @@ class ApiClient:
                         or machine.get("deviceName")
                         or machine.get("facilityName"),
                         "track_id": track.get("trackId") or track.get("id"),
-                        "track_name": track.get("name") or track.get("trackName"),
-                        "stock": track.get("stock") or track.get("count") or 0,
-                        "capacity": track.get("capacity"),
+                        "track_name": track.get("goodsName")
+                        or track.get("name")
+                        or track.get("trackName"),
+                        "stock": track.get("trackExistingCount")
+                        or track.get("stock")
+                        or track.get("count")
+                        or 0,
+                        "capacity": track.get("trackCount") or track.get("capacity"),
                         "collection_time": collection_time,
                     }
                 )
