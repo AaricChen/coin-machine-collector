@@ -3,15 +3,22 @@ app:
   interval_minutes: 60
 
 api:
-  base_url: "https://admin.example.com"
-  login_path: "/api/login"
-  machine_list_path: "/api/machines"
-  track_stock_path: "/api/machine/{machine_id}/tracks"
+  base_url: "https://ads.hfyuwo.com/prod-api"
+  captcha_path: "/captchaImage"
+  login_path: "/login"
+  user_info_path: "/getInfo"
+  machine_list_path: "/vending/facility/list"
+  track_stock_path: "/vending/track/list?facilityId={machine_id}"
   login_method: "POST"
   login_data_type: "json"
-  token_field: "data.token"
+  token_field: "token"
+  captcha_enabled: true
+  login_max_attempts: 5
+  token_ttl_seconds: 7200
   extra_headers:
-    User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+    User-Agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
+    Origin: "https://ads.hfyuwo.com"
+    Referer: "https://ads.hfyuwo.com/login"
   request_timeout: 30
 
 credentials:

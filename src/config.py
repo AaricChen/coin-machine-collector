@@ -12,11 +12,16 @@ from paths import PROJECT_ROOT, resolve_from_root
 class ApiConfig(BaseModel):
     base_url: str
     login_path: str
+    captcha_path: str = "/captchaImage"
     machine_list_path: str
     track_stock_path: str
+    user_info_path: str = "/getInfo"
     login_method: str = "POST"
     login_data_type: str = "json"
-    token_field: str = "data.token"
+    token_field: str = "token"
+    captcha_enabled: bool = True
+    login_max_attempts: int = 5
+    token_ttl_seconds: int = 7200
     extra_headers: dict[str, str] = Field(default_factory=dict)
     request_timeout: int = 30
 
@@ -77,10 +82,25 @@ def _maybe_keychain_password(credentials: dict[str, Any]) -> None:
         credentials["password"] = keyring.get_password(service, pwd_key) or ""
 
 
+def _load_dotenv(path: Path) -> None:
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def load_config(config_path: Optional[str | Path] = None) -> Settings:
     path = Path(config_path) if config_path else PROJECT_ROOT / "config" / "settings.yaml"
     if not path.is_absolute():
         path = PROJECT_ROOT / path
+
+    _load_dotenv(PROJECT_ROOT / ".env")
 
     with open(path, encoding="utf-8") as f:
         yaml_data = yaml.safe_load(f) or {}

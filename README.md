@@ -12,7 +12,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp config/.env.example .env   # 填入真实账号密码
-# 编辑 config/settings.yaml，填入抓包得到的接口路径与 Token 字段
+python src/login_probe.py     # 验证登录并查看账号/设备摘要
 python src/main.py --mode once
 ```
 
@@ -29,8 +29,18 @@ python src/main.py --mode once
 
 ## 配置
 
-- 业务配置：`config/settings.yaml`
+- 业务配置：`config/settings.yaml`（已对接 `ads.hfyuwo.com` RuoYi 登录：`/captchaImage` + `/login`）
 - 敏感凭据：`.env` 中的 `COIN_MACHINE_USERNAME` / `COIN_MACHINE_PASSWORD`，或 macOS Keychain（见 settings 中 `credentials.keychain_service`）
+- 算术验证码：默认自动识别（macOS Vision；可选 `pip install -r requirements-captcha.txt` 提高成功率）
+- 调试：`COIN_MACHINE_CAPTCHA_CODE=8 python src/login_probe.py` 可手动指定一次验证码答案
+
+### 登录后可用的主要数据
+
+| 接口 | 说明 |
+| --- | --- |
+| `POST /login` | 返回 JWT `token`（`Authorization: Bearer …`，请求头 `isToken: true`） |
+| `GET /getInfo` | 用户、角色、`permissions` 权限列表 |
+| `GET /vending/facility/list` | 纪念币机列表（`facilityId`、`facilityNumber`、库存/连接状态等） |
 
 ## 许可证
 

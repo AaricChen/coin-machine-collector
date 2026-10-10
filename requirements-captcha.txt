@@ -1,0 +1,3 @@
+# 可选：提高算术验证码识别成功率（体积较大，按需安装）
+ddddocr>=1.4.11
+opencv-python-headless>=4.8.0

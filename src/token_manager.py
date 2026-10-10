@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -6,6 +7,7 @@ from typing import Any, Optional
 import httpx
 from loguru import logger
 
+from captcha import CaptchaClient
 from config import Settings
 from paths import resolve_from_root
 
@@ -54,6 +56,11 @@ class TokenManager:
         logger.info("Token 已缓存，有效期 {} 秒", expires_in)
 
     def _extract_token(self, response_data: dict[str, Any]) -> tuple[str, int]:
+        if response_data.get("code") not in (None, 200):
+            raise ValueError(
+                f"登录失败：{response_data.get('msg') or response_data}"
+            )
+
         token_path = self.settings.api.token_field
         value: Any = response_data
         for key in token_path.split("."):
@@ -64,43 +71,73 @@ class TokenManager:
         if not value:
             raise ValueError(f"无法从响应中提取 Token：{response_data}")
 
-        expires_in = 3600
+        expires_in = self.settings.api.token_ttl_seconds
         if isinstance(response_data, dict):
             expires_in = int(
                 response_data.get("expires_in")
                 or response_data.get("expires_in_seconds")
                 or response_data.get("data", {}).get("expires_in")
-                or 3600
+                or expires_in
             )
         return str(value), expires_in
 
     def login(self) -> str:
         api = self.settings.api
         url = f"{api.base_url.rstrip('/')}{api.login_path}"
-        payload = {
-            "username": self.settings.credentials.username,
-            "password": self.settings.credentials.password,
+        manual_captcha = os.getenv("COIN_MACHINE_CAPTCHA_CODE", "").strip() or None
+        captcha_client = CaptchaClient(self.settings)
+        base_headers = {
+            "Content-Type": "application/json;charset=UTF-8",
+            "isToken": "false",
+            **api.extra_headers,
         }
-        headers = {"Content-Type": "application/json", **api.extra_headers}
 
         logger.info("正在登录后台获取 Token...")
-        with httpx.Client(timeout=api.request_timeout, headers=headers) as client:
-            if api.login_method.upper() == "POST":
-                if api.login_data_type == "json":
-                    resp = client.post(url, json=payload)
+        last_error: Optional[str] = None
+        with httpx.Client(timeout=api.request_timeout) as client:
+            for attempt in range(1, api.login_max_attempts + 1):
+                payload: dict[str, Any] = {
+                    "username": self.settings.credentials.username,
+                    "password": self.settings.credentials.password,
+                }
+                if api.captcha_enabled:
+                    uuid, img_bytes = captcha_client.fetch(client)
+                    code = captcha_client.solve(
+                        img_bytes,
+                        manual_code=manual_captcha if attempt == 1 else None,
+                    )
+                    payload["uuid"] = uuid
+                    payload["code"] = code
+                    logger.debug("登录尝试 {}/{}，验证码={}", attempt, api.login_max_attempts, code)
+
+                if api.login_method.upper() == "POST":
+                    if api.login_data_type == "json":
+                        resp = client.post(url, json=payload, headers=base_headers)
+                    else:
+                        resp = client.post(url, data=payload, headers=base_headers)
                 else:
-                    resp = client.post(url, data=payload)
-            else:
-                resp = client.get(url, params=payload)
+                    resp = client.get(url, params=payload, headers=base_headers)
 
-            resp.raise_for_status()
-            data = resp.json()
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") == 200:
+                    token, expires_in = self._extract_token(data)
+                    self.token = token
+                    self.expires_at = time.time() + expires_in
+                    self._save_to_cache(token, expires_in)
+                    return token
 
-        token, expires_in = self._extract_token(data)
-        self.token = token
-        self.expires_at = time.time() + expires_in
-        self._save_to_cache(token, expires_in)
-        return token
+                last_error = str(data.get("msg") or data)
+                logger.warning(
+                    "登录失败（{}/{}）：{}",
+                    attempt,
+                    api.login_max_attempts,
+                    last_error,
+                )
+                if manual_captcha and attempt == 1:
+                    manual_captcha = None
+
+        raise RuntimeError(f"登录多次失败：{last_error}")
 
     def get_valid_token(self) -> str:
         if self.token and self.expires_at > time.time() + 60:

@@ -20,6 +20,7 @@ class ApiClient:
     def _get_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.token_manager.get_valid_token()}",
+            "isToken": "true",
             **self.settings.api.extra_headers,
         }
 
@@ -33,7 +34,7 @@ class ApiClient:
         if isinstance(inner, list):
             return inner
         if isinstance(inner, dict):
-            for key in keys:
+            for key in ("rows", *keys):
                 candidate = inner.get(key)
                 if isinstance(candidate, list):
                     return candidate
@@ -83,11 +84,22 @@ class ApiClient:
 
         raise RuntimeError("请求多次失败，无法获得有效响应")
 
-    def get_machine_list(self) -> list[dict]:
+    def get_user_info(self) -> dict[str, Any]:
         url = (
             f"{self.settings.api.base_url.rstrip('/')}"
-            f"{self.settings.api.machine_list_path}"
+            f"{self.settings.api.user_info_path}"
         )
+        data = self._request_with_retry("GET", url)
+        if isinstance(data.get("user"), dict):
+            return data
+        return data
+
+    def get_machine_list(self) -> list[dict]:
+        path = self.settings.api.machine_list_path
+        if "pageNum=" not in path:
+            sep = "&" if "?" in path else "?"
+            path = f"{path}{sep}pageNum=1&pageSize=500"
+        url = f"{self.settings.api.base_url.rstrip('/')}{path}"
         data = self._request_with_retry("GET", url)
         machine_list = self._unwrap_list(data, "machines", "list", "records")
         logger.info("获取机器列表成功，共 {} 台", len(machine_list))
@@ -115,6 +127,8 @@ class ApiClient:
                 machine.get("id")
                 or machine.get("machineId")
                 or machine.get("deviceId")
+                or machine.get("facilityId")
+                or machine.get("facilityNumber")
             )
             if not machine_id:
                 logger.warning("跳过缺少 ID 的机器记录：{}", machine)
@@ -126,7 +140,8 @@ class ApiClient:
                     {
                         "machine_id": str(machine_id),
                         "machine_name": machine.get("name")
-                        or machine.get("deviceName"),
+                        or machine.get("deviceName")
+                        or machine.get("facilityName"),
                         "track_id": track.get("trackId") or track.get("id"),
                         "track_name": track.get("name") or track.get("trackName"),
                         "stock": track.get("stock") or track.get("count") or 0,
