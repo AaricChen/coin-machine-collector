@@ -13,6 +13,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 cp config/.env.example .env   # 填入真实账号密码
 python src/login_probe.py     # 验证登录并查看账号/设备摘要
+PYTHONPATH=src python src/list_facilities.py --all --compact   # 设备列表
 python src/main.py --mode once
 ```
 
@@ -41,6 +42,26 @@ python src/main.py --mode once
 | `POST /login` | 返回 JWT `token`（`Authorization: Bearer …`，请求头 `isToken: true`） |
 | `GET /getInfo` | 用户、角色、`permissions` 权限列表 |
 | `GET /vending/facility/list` | 纪念币机列表（`facilityId`、`facilityNumber`、库存/连接状态等） |
+
+### 业务 API 封装（`src/hfyuwo/`）
+
+后续新接口按同一模式扩展：**模型**（`hfyuwo/models/`）+ **独立函数**（`hfyuwo/services/`）。
+
+```python
+from hfyuwo import create_context
+from hfyuwo.services.facility import list_facilities_page, list_all_facilities
+from hfyuwo.services.user import get_user_info
+
+page = list_facilities_page(1, 50)   # -> RuoYiPage[Facility]
+devices = list_all_facilities()
+info = get_user_info()
+
+# 复用同一登录会话（避免重复登录）
+ctx = create_context()
+list_facilities_page(1, 50, ctx=ctx)
+```
+
+新增接口步骤：在 `models/` 定义 Pydantic 模型 → 在 `services/` 写 `xxx()` 函数（内部用 `ctx.client.get_json`）→ CLI 脚本仅负责 argparse 与打印 JSON。
 
 ## 许可证
 

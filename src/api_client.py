@@ -1,10 +1,14 @@
 import time
 from typing import Any
 
-import httpx
 from loguru import logger
 
 from config import Settings
+from hfyuwo.client import HfyuwoClient
+from hfyuwo.context import HfyuwoContext
+from hfyuwo.models.base import extract_rows
+from hfyuwo.services.facility import list_all_facilities, list_facilities_page
+from hfyuwo.services.user import get_user_info as fetch_user_info
 from token_manager import TokenManager
 
 
@@ -12,104 +16,54 @@ class TokenExpiredError(Exception):
     pass
 
 
+def _page_to_dict(page) -> dict[str, Any]:
+    return {
+        "code": page.code,
+        "msg": page.msg,
+        "total": page.total,
+        "rows": [row.model_dump(by_alias=True) for row in page.rows],
+    }
+
+
 class ApiClient:
+    """采集任务用门面；新业务优先使用 hfyuwo.services.* 独立函数。"""
+
     def __init__(self, settings: Settings, token_manager: TokenManager):
         self.settings = settings
         self.token_manager = token_manager
-
-    def _get_headers(self) -> dict[str, str]:
-        return {
-            "Authorization": f"Bearer {self.token_manager.get_valid_token()}",
-            "isToken": "true",
-            **self.settings.api.extra_headers,
-        }
-
-    @staticmethod
-    def _unwrap_list(data: Any, *keys: str) -> list[dict]:
-        if isinstance(data, list):
-            return [x for x in data if isinstance(x, dict)]
-        if not isinstance(data, dict):
-            return []
-        inner = data.get("data", data)
-        if isinstance(inner, list):
-            return inner
-        if isinstance(inner, dict):
-            for key in ("rows", *keys):
-                candidate = inner.get(key)
-                if isinstance(candidate, list):
-                    return candidate
-        return []
-
-    def _request_with_retry(self, method: str, url: str) -> dict[str, Any]:
-        max_attempts = 3
-        token_refreshed = False
-
-        for attempt in range(1, max_attempts + 1):
-            headers = self._get_headers()
-            try:
-                resp = httpx.request(
-                    method,
-                    url,
-                    headers=headers,
-                    timeout=self.settings.api.request_timeout,
-                )
-                if resp.status_code == 401:
-                    if token_refreshed:
-                        raise RuntimeError("Token 刷新后仍返回 401")
-                    logger.warning("Token 失效，重新登录后重试")
-                    self.token_manager.invalidate_token()
-                    self.token_manager.login()
-                    token_refreshed = True
-                    continue
-                resp.raise_for_status()
-                payload = resp.json()
-                if not isinstance(payload, dict):
-                    return {"data": payload}
-                return payload
-            except TokenExpiredError:
-                self.token_manager.invalidate_token()
-                self.token_manager.login()
-                token_refreshed = True
-            except httpx.HTTPError as e:
-                if attempt == max_attempts:
-                    raise
-                wait_time = 2**attempt
-                logger.warning(
-                    "请求失败（第 {} 次）：{}，{} 秒后重试",
-                    attempt,
-                    e,
-                    wait_time,
-                )
-                time.sleep(wait_time)
-
-        raise RuntimeError("请求多次失败，无法获得有效响应")
+        self._ctx = HfyuwoContext(
+            settings=settings,
+            token_manager=token_manager,
+            client=HfyuwoClient(settings, token_manager),
+        )
 
     def get_user_info(self) -> dict[str, Any]:
-        url = (
-            f"{self.settings.api.base_url.rstrip('/')}"
-            f"{self.settings.api.user_info_path}"
+        info = fetch_user_info(ctx=self._ctx)
+        return info.model_dump(by_alias=True)
+
+    def get_facility_list(
+        self,
+        page_num: int = 1,
+        page_size: int = 50,
+    ) -> dict[str, Any]:
+        page = list_facilities_page(page_num, page_size, ctx=self._ctx)
+        logger.info(
+            "获取设备列表成功，本页 {} 条，总计 {} 台",
+            len(page.rows),
+            page.total,
         )
-        data = self._request_with_retry("GET", url)
-        if isinstance(data.get("user"), dict):
-            return data
-        return data
+        return _page_to_dict(page)
 
     def get_machine_list(self) -> list[dict]:
-        path = self.settings.api.machine_list_path
-        if "pageNum=" not in path:
-            sep = "&" if "?" in path else "?"
-            path = f"{path}{sep}pageNum=1&pageSize=500"
-        url = f"{self.settings.api.base_url.rstrip('/')}{path}"
-        data = self._request_with_retry("GET", url)
-        machine_list = self._unwrap_list(data, "machines", "list", "records")
-        logger.info("获取机器列表成功，共 {} 台", len(machine_list))
-        return machine_list
+        facilities = list_all_facilities(ctx=self._ctx)
+        rows = [f.model_dump(by_alias=True) for f in facilities]
+        logger.info("获取机器列表成功，共 {} 台", len(rows))
+        return rows
 
     def get_track_stock(self, machine_id: str) -> list[dict]:
         path = self.settings.api.track_stock_path.format(machine_id=machine_id)
-        url = f"{self.settings.api.base_url.rstrip('/')}{path}"
-        data = self._request_with_retry("GET", url)
-        track_list = self._unwrap_list(data, "tracks", "list", "records")
+        data = self._ctx.client.get_json(path.lstrip("/"))
+        track_list = extract_rows(data)
         logger.debug(
             "机器 {} 轨道库存获取成功，共 {} 条",
             machine_id,
